@@ -5,6 +5,7 @@
     "deploy": "deployctl deploy --project=large-crow-51 main.ts --exclude .env"
   },
   "fmt": {
-    "enable": true
+    "files": {
+      "include": ["./*.ts"]}
   }
 }
