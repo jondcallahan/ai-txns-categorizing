@@ -4,13 +4,17 @@ import { OpenAI } from "https://deno.land/x/openai@1.2.1/mod.ts";
 import { z } from "https://deno.land/x/zod@v3.21.4/mod.ts";
 import "https://deno.land/std@0.180.0/dotenv/load.ts";
 import { nanoid } from "https://deno.land/x/nanoid@v3.0.0/mod.ts";
-import { cleanText, trytm } from "./utils.ts";
+import { trytm } from "https://esm.sh/v112/@bdsqqq/try@2.3.1";
+import { cleanText } from "./utils.ts";
 import { htmlToText } from "./dom-parse.ts";
+import { sendNotification } from "./ntfy.ts";
 
 const OPENAI_API_KEY = z.string().parse(Deno.env.get("OPENAI_API_KEY"));
 const AIRTABLE_API_KEY = z.string().parse(Deno.env.get("AIRTABLE_API_KEY"));
-const AIRTABLE_BASE_ID = z.string().parse(Deno.env.get("AIRTABLE_BASE_ID"));
-const AIRTABLE_TABLE_NAME = z.string().parse(
+export const AIRTABLE_BASE_ID = z.string().parse(
+  Deno.env.get("AIRTABLE_BASE_ID"),
+);
+export const AIRTABLE_TABLE_NAME = z.string().parse(
   Deno.env.get("AIRTABLE_TABLE_NAME"),
 );
 
@@ -150,6 +154,12 @@ app.post("/inbound-email", async (c) => {
           typecast: true,
         }),
       },
+    );
+
+    await sendNotification(
+      result.data.merchant,
+      result.data.category,
+      result.data.amount,
     );
   });
 
