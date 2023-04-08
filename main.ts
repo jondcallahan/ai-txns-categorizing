@@ -39,10 +39,15 @@ type PostmarkWebhookPayload = {
 // const prompt =
 //   `Extract and format the transaction information as valid JSON from this email using schema {"date": string, "time": string, "amount": string, "account": string, "merchant": string, "category": string} "merchant" should be transformed to the human readable merchant name stripped of store specific/location info. "category" is the merchant category. Reply only with JSON. Example: {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking", "merchant": "Amazon", "category": "Online Retail"}`;
 
+// const prompt =
+//   `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking", "merchant": "Sweet Green", "category": "Restaurant"}.
+//   "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info.
+//   "category" should categorize the "merchant".`;
+
 const prompt =
   `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking", "merchant": "Sweet Green", "category": "Restaurant"}.
-  "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info.
-  "category" should categorize the "merchant".`;
+  "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility.
+  "category" should categorize the "merchant" into a budget category.`;
 
 const schema = z.object({
   date: z.string(),
@@ -88,7 +93,8 @@ app.post("/inbound-email", async (c) => {
     ? cleanText(TextBody)
     : cleanText(htmlToText(HtmlBody));
 
-  console.log("Got email from", FromFull.Email, " calling OpenAI");
+  console.log("Got email from", FromFull.Email, " calling OpenAI with payload:");
+  console.log(txnAlert);
 
   console.time("openai");
   const chat_completion = await open_ai.createChatCompletion({
@@ -109,8 +115,6 @@ app.post("/inbound-email", async (c) => {
   console.log("Got chat completion");
 
   chat_completion.choices.forEach(async (choice) => {
-    console.log(choice.message?.content);
-
     const [json, error] = await trytm(
       JSON.parse(choice.message?.content || "{}"),
     );
