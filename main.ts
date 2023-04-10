@@ -71,11 +71,11 @@ app.post("/inbound-email", async (c) => {
   console.log("Got inbound email webhook from Postmark!");
 
   console.time("email-parsing");
-  const [payload, error] = await trytm(c.req.json());
+  const [payload, payload_error] = await trytm(c.req.json());
   console.timeEnd("email-parsing");
 
-  if (error) {
-    console.error(error);
+  if (payload_error) {
+    console.error(payload_error);
     return c.text("Unable to parse email", 415, {
       "accept": "application/json",
     });
@@ -101,8 +101,12 @@ app.post("/inbound-email", async (c) => {
     model: "gpt-3.5-turbo",
     messages: [
       {
+        role: "system",
+        content: prompt,
+      },
+      {
         role: "user",
-        content: prompt + "\n\n" + txnAlert,
+        content: txnAlert,
       },
     ],
     temperature: 0,
@@ -115,16 +119,16 @@ app.post("/inbound-email", async (c) => {
   console.log("Got chat completion");
 
   chat_completion.choices.forEach(async (choice) => {
-    const [json, error] = await trytm(
+    const [completion, completion_error] = await trytm(
       JSON.parse(choice.message?.content || "{}"),
     );
 
-    if (error) {
-      console.error(error);
+    if (completion_error) {
+      console.error(completion_error);
       return c.text("NOT OK", 500);
     }
 
-    const result = schema.safeParse(json);
+    const result = schema.safeParse(completion);
 
     if (!result.success) {
       console.error(result.error);
