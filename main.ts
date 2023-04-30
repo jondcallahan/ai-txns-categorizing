@@ -44,10 +44,16 @@ type PostmarkWebhookPayload = {
 //   "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info.
 //   "category" should categorize the "merchant".`;
 
+// Deprecated 2023-04-30
+// const prompt =
+//   `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking", "merchant": "Sweet Green", "category": "Restaurant"}.
+//   "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility.
+//   "category" should categorize the "merchant" into a budget category.`;
+
 const prompt =
-  `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking", "merchant": "Sweet Green", "category": "Restaurant"}.
-  "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility.
-  "category" should categorize the "merchant" into a budget category.`;
+  `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant": "Sweet Green", "category": "Restaurant"}.
+  "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
+  "category" should categorize the "merchant" into a budget category. Reply with JSON only.`;
 
 const schema = z.object({
   date: z.string(),
@@ -93,7 +99,11 @@ app.post("/inbound-email", async (c) => {
     ? cleanText(TextBody)
     : cleanText(htmlToText(HtmlBody));
 
-  console.log("Got email from", FromFull.Email, " calling OpenAI with payload:");
+  console.log(
+    "Got email from",
+    FromFull.Email,
+    " calling OpenAI with payload:",
+  );
   console.log(txnAlert);
 
   console.time("openai");
@@ -119,11 +129,13 @@ app.post("/inbound-email", async (c) => {
   console.log("Got chat completion");
 
   chat_completion.choices.forEach(async (choice) => {
-    const [completion, completion_error] = await trytm(
-      JSON.parse(choice.message?.content || "{}"),
-    );
+    let completion;
+    try {
+      completion = JSON.parse(choice.message?.content || "{}");
+    } catch (completion_error) {
+      console.log("Got error parsing completion");
+      console.log(choice.message?.content);
 
-    if (completion_error) {
       console.error(completion_error);
       return c.text("NOT OK", 500);
     }
@@ -131,6 +143,8 @@ app.post("/inbound-email", async (c) => {
     const result = schema.safeParse(completion);
 
     if (!result.success) {
+      console.log("Completion does not match schema");
+      console.log(choice.message?.content);
       console.error(result.error);
       return c.text("NOT OK", 500);
     }
