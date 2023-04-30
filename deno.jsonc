@@ -3,9 +3,5 @@
     "dev": "deno run --allow-read --allow-net --allow-env --watch main.ts",
     "start": "deno run --allow-read --allow-net --allow-env main.ts",
     "deploy": "deployctl deploy --project=large-crow-51 main.ts --exclude .env"
-  },
-  "fmt": {
-    "files": {
-      "include": ["./*.ts"]}
   }
 }
