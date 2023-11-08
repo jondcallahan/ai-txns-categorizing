@@ -3,5 +3,12 @@
     "dev": "deno run --allow-read --allow-net --allow-env --watch main.ts",
     "start": "deno run --allow-read --allow-net --allow-env main.ts",
     "deploy": "deployctl deploy --project=large-crow-51 main.ts --exclude .env"
+  },
+  "imports": {
+    "openai": "https://deno.land/x/openai@v4.16.1/mod.ts",
+    "trytm": "https://esm.sh/@bdsqqq/try@2.3.1",
+    "hono": "https://deno.land/x/hono@v3.9.2/mod.ts",
+    "zod": "https://deno.land/x/zod@v3.22.4/mod.ts",
+    "nanoid": "https://deno.land/x/nanoid@v3.0.0/mod.ts"
   }
 }

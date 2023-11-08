@@ -1,10 +1,9 @@
-import { serve } from "https://deno.land/std@0.180.0/http/server.ts";
-import { Hono } from "https://deno.land/x/hono@v3.1.1/mod.ts";
-import { OpenAI } from "https://deno.land/x/openai@1.2.1/mod.ts";
-import { z } from "https://deno.land/x/zod@v3.21.4/mod.ts";
+import { Hono } from "hono";
+import { OpenAI } from "openai";
+import { z } from "zod";
 import "https://deno.land/std@0.180.0/dotenv/load.ts";
-import { nanoid } from "https://deno.land/x/nanoid@v3.0.0/mod.ts";
-import { trytm } from "https://esm.sh/v112/@bdsqqq/try@2.3.1";
+import { nanoid } from "nanoid";
+import { trytm } from "trytm";
 import { cleanText } from "./utils.ts";
 import { htmlToText } from "./dom-parse.ts";
 import { sendNotification } from "./ntfy.ts";
@@ -18,7 +17,9 @@ export const AIRTABLE_TABLE_NAME = z.string().parse(
   Deno.env.get("AIRTABLE_TABLE_NAME"),
 );
 
-const open_ai = new OpenAI(OPENAI_API_KEY);
+const open_ai = new OpenAI({
+  apiKey: OPENAI_API_KEY,
+});
 const app = new Hono();
 
 type PostmarkWebhookPayload = {
@@ -50,10 +51,24 @@ type PostmarkWebhookPayload = {
 //   "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility.
 //   "category" should categorize the "merchant" into a budget category.`;
 
-const prompt =
-  `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant": "Sweet Green", "category": "Restaurant"}.
-  "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
-  "category" should categorize the "merchant" into a budget category. Reply with JSON only.`;
+// Deprecated 2023-11-05
+// const prompt =
+//   `Format this credit card transaction as valid JSON like this {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant": "Sweet Green", "category": "Restaurant"}.
+//   "merchant" should be enriched to the common, well-known merchant name without store specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
+//   "category" should categorize the "merchant" into a budget category. Reply with JSON only.`;
+
+const prompt = `
+Please format this credit card transaction as JSON.
+  "date" should be in the format YYYY-MM-DD.
+  "merchant_raw" should be the exact merchant name as it appears on the credit card statement.
+  "merchant" should be enriched to the common, well-known merchant name without store-specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
+  "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these, please specify it as "Other".
+
+Reply with JSON only.
+Example:
+
+{"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant_raw": "SQ* SWEET GREEN CHICAGO", "merchant": "Sweet Green", "category": "Food & Dining"}
+`;
 
 const schema = z.object({
   date: z.string(),
@@ -61,6 +76,7 @@ const schema = z.object({
   amount: z.string(),
   account: z.string(),
   merchant: z.string(),
+  merchant_raw: z.string(),
   category: z.string(),
 });
 
@@ -76,9 +92,7 @@ app.get("/", () => {
 app.post("/inbound-email", async (c) => {
   console.log("Got inbound email webhook from Postmark!");
 
-  console.time("email-parsing");
   const [payload, payload_error] = await trytm(c.req.json());
-  console.timeEnd("email-parsing");
 
   if (payload_error) {
     console.error(payload_error);
@@ -107,8 +121,8 @@ app.post("/inbound-email", async (c) => {
   console.log(txnAlert);
 
   console.time("openai");
-  const chat_completion = await open_ai.createChatCompletion({
-    model: "gpt-3.5-turbo",
+  const chat_completion = await open_ai.chat.completions.create({
+    model: "gpt-3.5-turbo-1106",
     messages: [
       {
         role: "system",
@@ -119,73 +133,74 @@ app.post("/inbound-email", async (c) => {
         content: txnAlert,
       },
     ],
-    temperature: 0,
-    topP: 1,
-    presencePenalty: 0,
-    frequencyPenalty: 0,
+    temperature: 0.1,
+    response_format: {
+      type: "json_object",
+    },
+  }, {
+    timeout: 20_000,
   });
   console.timeEnd("openai");
 
   console.log("Got chat completion");
 
-  chat_completion.choices.forEach(async (choice) => {
-    let completion;
-    try {
-      completion = JSON.parse(choice.message?.content || "{}");
-    } catch (completion_error) {
-      console.log("Got error parsing completion");
-      console.log(choice.message?.content);
+  const completion = JSON.parse(
+    chat_completion.choices[0].message.content || "{}",
+  );
 
-      console.error(completion_error);
-      return c.text("NOT OK", 500);
-    }
+  const result = schema.safeParse(completion);
 
-    const result = schema.safeParse(completion);
+  if (!result.success) {
+    console.log("Completion does not match schema");
+    console.log(completion);
+    console.error(result.error);
+    return c.text("NOT OK", 500);
+  }
 
-    if (!result.success) {
-      console.log("Completion does not match schema");
-      console.log(choice.message?.content);
-      console.error(result.error);
-      return c.text("NOT OK", 500);
-    }
+  console.log(result.data);
 
-    console.log({ parsed: result.data });
-
-    await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-        },
-        body: JSON.stringify({
-          records: [
-            {
-              fields: {
-                ID: nanoid(),
-                Date: result.data.date,
-                Time: result.data.time,
-                Amount: result.data.amount,
-                Account: result.data.account,
-                Merchant: result.data.merchant,
-                Category: result.data.category,
-              },
-            },
-          ],
-          typecast: true,
-        }),
+  const airtable_res = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
       },
-    );
+      body: JSON.stringify({
+        records: [
+          {
+            fields: {
+              ID: nanoid(),
+              Date: result.data.date,
+              Time: result.data.time,
+              Amount: result.data.amount,
+              Account: result.data.account,
+              Merchant: result.data.merchant,
+              Category: result.data.category,
+              "Merchant raw": result.data.merchant_raw,
+            },
+          },
+        ],
+        typecast: true,
+      }),
+    },
+  );
 
-    await sendNotification(
-      result.data.merchant,
-      result.data.category,
-      result.data.amount,
-    );
-  });
+  if (!airtable_res.ok) {
+    console.error("Error calling Airtable: " + await airtable_res.text());
+    return c.text("NOT OK", 500);
+  } else {
+    console.log("Saved to Airtable");
+  }
+
+  await sendNotification(
+    result.data.merchant,
+    result.data.category,
+    result.data.amount,
+  );
 
   return c.text("OK", 200);
 });
 
-serve(app.fetch);
+Deno.serve(app.fetch);
