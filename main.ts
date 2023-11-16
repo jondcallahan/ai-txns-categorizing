@@ -60,6 +60,9 @@ type PostmarkWebhookPayload = {
 const prompt = `
 Please format this credit card transaction as JSON.
   "date" should be in the format YYYY-MM-DD.
+  "time" should be in the format HH:MM AM/PM TIMEZONE.
+  "amount" should be in the format $X.XX.
+  "account" should be the last 4 digits of the account number in parentheses.
   "merchant_raw" should be the exact merchant name as it appears on the credit card statement.
   "merchant" should be enriched to the common, well-known merchant name without store-specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
   "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these, please specify it as "Other".
