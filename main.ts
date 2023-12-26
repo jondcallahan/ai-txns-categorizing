@@ -124,7 +124,7 @@ app.post("/inbound-email", async (c) => {
   );
   console.log(txnAlert);
 
-  console.time("openai");
+  console.time("llm_completion");
   const chat_completion = await open_ai.chat.completions.create({
     model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
     messages: [
@@ -180,7 +180,7 @@ app.post("/inbound-email", async (c) => {
   }, {
     timeout: 20_000,
   });
-  console.timeEnd("openai");
+  console.timeEnd("llm_completion");
 
   console.log(
     "Got chat completion",
