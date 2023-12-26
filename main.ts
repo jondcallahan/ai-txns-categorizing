@@ -8,7 +8,7 @@ import { cleanText } from "./utils.ts";
 import { htmlToText } from "./dom-parse.ts";
 import { sendNotification } from "./ntfy.ts";
 
-const OPENAI_API_KEY = z.string().parse(Deno.env.get("OPENAI_API_KEY"));
+const ANYSCALE_API_KEY = z.string().parse(Deno.env.get("ANYSCALE_API_KEY"));
 const AIRTABLE_API_KEY = z.string().parse(Deno.env.get("AIRTABLE_API_KEY"));
 export const AIRTABLE_BASE_ID = z.string().parse(
   Deno.env.get("AIRTABLE_BASE_ID"),
@@ -18,7 +18,8 @@ export const AIRTABLE_TABLE_NAME = z.string().parse(
 );
 
 const open_ai = new OpenAI({
-  apiKey: OPENAI_API_KEY,
+  apiKey: ANYSCALE_API_KEY,
+  baseURL: "https://api.endpoints.anyscale.com/v1",
 });
 const app = new Hono();
 
@@ -65,9 +66,9 @@ Please format this credit card transaction as JSON.
   "account" should be the last 4 digits of the account number in parentheses.
   "merchant_raw" should be the exact merchant name as it appears on the credit card statement.
   "merchant" should be enriched to the common, well-known merchant name without store-specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
-  "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these, please specify it as "Other".
+  "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these please use "Other".
 
-Reply with JSON only.
+Reply with JSON only, no other text explaining the JSON.
 Example:
 
 {"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant_raw": "SQ* SWEET GREEN CHICAGO", "merchant": "Sweet Green", "category": "Food & Dining"}
@@ -125,7 +126,7 @@ app.post("/inbound-email", async (c) => {
 
   console.time("openai");
   const chat_completion = await open_ai.chat.completions.create({
-    model: "gpt-3.5-turbo-1106",
+    model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
     messages: [
       {
         role: "system",
@@ -139,13 +140,52 @@ app.post("/inbound-email", async (c) => {
     temperature: 0.1,
     response_format: {
       type: "json_object",
+      schema: {
+        type: "object",
+        properties: {
+          date: { type: "string" },
+          time: { type: "string" },
+          amount: { type: "string" },
+          account: { type: "string" },
+          merchant: { type: "string" },
+          merchant_raw: { type: "string" },
+          category: {
+            type: "string",
+            enum: [
+              "Auto",
+              "Food & Dining",
+              "Pet",
+              "Travel",
+              "Home",
+              "Utilities",
+              "Gifts/Donation",
+              "Shopping",
+              "Baby/Kid",
+              "Taxes",
+              "Other",
+            ],
+          },
+        },
+        required: [
+          "date",
+          "time",
+          "amount",
+          "account",
+          "merchant",
+          "merchant_raw",
+          "category",
+        ],
+      },
     },
   }, {
     timeout: 20_000,
   });
   console.timeEnd("openai");
 
-  console.log("Got chat completion");
+  console.log(
+    "Got chat completion",
+    chat_completion.choices[0].message.content,
+  );
 
   const completion = JSON.parse(
     chat_completion.choices[0].message.content || "{}",
