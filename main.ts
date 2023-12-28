@@ -67,6 +67,7 @@ Please format this credit card transaction as JSON.
   "merchant_raw" should be the exact merchant name as it appears on the credit card statement.
   "merchant" should be enriched to the common, well-known merchant name without store-specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
   "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these please use "Other".
+  Grocery stores should be categorized as "Food & Dining".
 
 Reply with JSON only, no other text explaining the JSON.
 Example:
