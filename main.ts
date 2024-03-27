@@ -1,14 +1,14 @@
 import { Hono } from "hono";
-import { OpenAI } from "openai";
 import { z } from "zod";
 import "https://deno.land/std@0.180.0/dotenv/load.ts";
+import Anthropic from "npm:@anthropic-ai/sdk@0.19.0";
 import { nanoid } from "nanoid";
 import { trytm } from "trytm";
 import { cleanText } from "./utils.ts";
 import { htmlToText } from "./dom-parse.ts";
 import { sendNotification } from "./ntfy.ts";
 
-const ANYSCALE_API_KEY = z.string().parse(Deno.env.get("ANYSCALE_API_KEY"));
+const ANTHROPIC_API_KEY = z.string().parse(Deno.env.get("ANTHROPIC_API_KEY"));
 const AIRTABLE_API_KEY = z.string().parse(Deno.env.get("AIRTABLE_API_KEY"));
 export const AIRTABLE_BASE_ID = z.string().parse(
   Deno.env.get("AIRTABLE_BASE_ID"),
@@ -17,10 +17,10 @@ export const AIRTABLE_TABLE_NAME = z.string().parse(
   Deno.env.get("AIRTABLE_TABLE_NAME"),
 );
 
-const open_ai = new OpenAI({
-  apiKey: ANYSCALE_API_KEY,
-  baseURL: "https://api.endpoints.anyscale.com/v1",
+const anthropic = new Anthropic({
+  apiKey: ANTHROPIC_API_KEY,
 });
+
 const app = new Hono();
 
 type PostmarkWebhookPayload = {
@@ -59,20 +59,35 @@ type PostmarkWebhookPayload = {
 //   "category" should categorize the "merchant" into a budget category. Reply with JSON only.`;
 
 const prompt = `
-Please format this credit card transaction as JSON.
-  "date" should be in the format YYYY-MM-DD.
-  "time" should be in the format HH:MM AM/PM TIMEZONE.
-  "amount" should be in the format $X.XX.
-  "account" should be the last 4 digits of the account number in parentheses.
-  "merchant_raw" should be the exact merchant name as it appears on the credit card statement.
-  "merchant" should be enriched to the common, well-known merchant name without store-specific, location, or point-of-sale provider info, formatted for legibility. If the merchant is part of a restaurant group, extract the specific restaurant name instead of the group name.
-  "category" can only be: "Auto", "Food & Dining", "Pet", "Travel", "Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other" ONLY. If the category does not match any of these please use "Other".
-  Grocery stores should be categorized as "Food & Dining".
+Here are the details of a credit card transaction:
 
-Reply with JSON only, no other text explaining the JSON.
-Example:
+<transaction>
+{TRANSACTION}
+</transaction>
 
-{"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (...123)", "merchant_raw": "SQ* SWEET GREEN CHICAGO", "merchant": "Sweet Green", "category": "Food & Dining"}
+Please format this transaction as a JSON object with the following fields and formats:
+
+- "date" should be in the format YYYY-MM-DD
+- "time" should be in the format HH:MM AM/PM TIMEZONE
+- "amount" should be in the format $X.XX
+- "account" should be the name and last 4 digits of the account number in parentheses
+- "merchant_raw" should be the exact merchant name as it appears in the transaction details above
+- "merchant" should be the common, well-known name for this merchant, without any store numbers,
+locations, or point-of-sale provider information. Format it for maximum legibility. If the merchant
+is part of a restaurant group, extract the specific restaurant name rather than using the group
+name.
+- "category" can ONLY be one of the following values: "Auto", "Food & Dining", "Pet", "Travel",
+"Home", "Utilities", "Gifts/Donation", "Shopping", "Baby/Kid", "Taxes", or "Other". If the merchant
+does not clearly fit into any of those categories, use "Other". Note that grocery store purchases
+should be categorized as "Food & Dining".
+
+Output the JSON object with no other explanatory text. Here is an example of the desired output
+format:
+
+<example>
+{"date": "2021-12-31", "time": "4:35 PM ET", "amount": "$1.00", "account": "Checking (1234)",
+"merchant_raw": "SQ* SWEET GREEN CHICAGO", "merchant": "Sweet Green", "category": "Food & Dining"}
+</example>
 `;
 
 const schema = z.object({
@@ -121,77 +136,30 @@ app.post("/inbound-email", async (c) => {
   console.log(
     "Got email from",
     FromFull.Email,
-    " calling OpenAI with payload:",
+    " calling LLM with payload:",
   );
   console.log(txnAlert);
 
   console.time("llm_completion");
-  const chat_completion = await open_ai.chat.completions.create({
-    model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
+  const chat_completion = await anthropic.messages.create({
+    model: "claude-3-sonnet-20240229",
     messages: [
       {
-        role: "system",
-        content: prompt,
-      },
-      {
         role: "user",
-        content: txnAlert,
+        content: prompt.replace("{TRANSACTION}", txnAlert),
       },
     ],
     temperature: 0.1,
-    response_format: {
-      type: "json_object",
-      schema: {
-        type: "object",
-        properties: {
-          date: { type: "string" },
-          time: { type: "string" },
-          amount: { type: "string" },
-          account: { type: "string" },
-          merchant: { type: "string" },
-          merchant_raw: { type: "string" },
-          category: {
-            type: "string",
-            enum: [
-              "Auto",
-              "Food & Dining",
-              "Pet",
-              "Travel",
-              "Home",
-              "Utilities",
-              "Gifts/Donation",
-              "Shopping",
-              "Baby/Kid",
-              "Taxes",
-              "Other",
-            ],
-          },
-        },
-        required: [
-          "date",
-          "time",
-          "amount",
-          "account",
-          "merchant",
-          "merchant_raw",
-          "category",
-        ],
-      },
-    },
-  }, {
-    timeout: 20_000,
+    max_tokens: 256,
   });
   console.timeEnd("llm_completion");
 
   console.log(
     "Got chat completion",
-    chat_completion.choices[0].message.content,
+    chat_completion.content.at(-1)?.text,
   );
 
-  const completion = JSON.parse(
-    chat_completion.choices[0].message.content || "{}",
-  );
-
+  const completion = JSON.parse(chat_completion.content.at(-1)?.text || "{}");
   const result = schema.safeParse(completion);
 
   if (!result.success) {
