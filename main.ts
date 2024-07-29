@@ -218,40 +218,40 @@ app.post("/inbound-email", async (c) => {
   }
   const transaction = await _transaction;
 
-  const airtable_res = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        records: [
-          {
-            fields: {
-              ID: nanoid(),
-              Date: transaction.date,
-              Time: transaction.time,
-              Amount: transaction.amount,
-              Account: transaction.account,
-              Merchant: transaction.merchant,
-              Category: transaction.category,
-              "Merchant raw": transaction.merchant_raw,
-            },
-          },
-        ],
-        typecast: true,
-      }),
-    },
-  );
+  // const airtable_res = await fetch(
+  //   `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`,
+  //   {
+  //     method: "POST",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //       Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+  //     },
+  //     body: JSON.stringify({
+  //       records: [
+  //         {
+  //           fields: {
+  //             ID: nanoid(),
+  //             Date: transaction.date,
+  //             Time: transaction.time,
+  //             Amount: transaction.amount,
+  //             Account: transaction.account,
+  //             Merchant: transaction.merchant,
+  //             Category: transaction.category,
+  //             "Merchant raw": transaction.merchant_raw,
+  //           },
+  //         },
+  //       ],
+  //       typecast: true,
+  //     }),
+  //   },
+  // );
 
-  if (!airtable_res.ok) {
-    console.error("Error calling Airtable: " + await airtable_res.text());
-    return c.text("NOT OK", 500);
-  } else {
-    console.log("Saved to Airtable");
-  }
+  // if (!airtable_res.ok) {
+  //   console.error("Error calling Airtable: " + await airtable_res.text());
+  //   return c.text("NOT OK", 500);
+  // } else {
+  //   console.log("Saved to Airtable");
+  // }
 
   await sendNotification(
     transaction.merchant,
