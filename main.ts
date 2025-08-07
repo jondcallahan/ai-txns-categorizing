@@ -1,10 +1,18 @@
 import { Hono } from "hono";
-import { z } from "npm:zod@3.23.4";
+import { z } from "npm:zod";
 import "https://deno.land/std@0.180.0/dotenv/load.ts";
-import Instructor from "npm:@instructor-ai/instructor@1.2.1";
-import OpenAI from "npm:openai@4.38.5";
+import { openai } from "npm:@ai-sdk/openai";
+import { generateObject } from "npm:ai";
 import { nanoid } from "nanoid";
-import { trytm } from "trytm";
+// Simple try-catch wrapper
+async function tryAsync<T>(fn: Promise<T>): Promise<[T | null, Error | null]> {
+  try {
+    const result = await fn;
+    return [result, null];
+  } catch (error) {
+    return [null, error instanceof Error ? error : new Error(String(error))];
+  }
+}
 import { cleanText } from "./utils.ts";
 import { htmlToText } from "./dom-parse.ts";
 import { sendNotification } from "./ntfy.ts";
@@ -18,15 +26,7 @@ export const AIRTABLE_TABLE_NAME = z.string().parse(
   Deno.env.get("AIRTABLE_TABLE_NAME"),
 );
 
-const oai = new OpenAI({
-  apiKey: OPENAI_API_KEY,
-});
-
-const client = Instructor({
-  client: oai,
-  mode: "TOOLS",
-  debug: true,
-});
+const model = openai("gpt-5");
 
 const app = new Hono();
 
@@ -163,7 +163,7 @@ app.get("/", () => {
 app.post("/inbound-email", async (c) => {
   console.log("Got inbound email webhook from Postmark!");
 
-  const [payload, payload_error] = await trytm(c.req.json());
+  const [payload, payload_error] = await tryAsync(c.req.json());
 
   if (payload_error) {
     console.error(payload_error);
@@ -194,20 +194,15 @@ app.post("/inbound-email", async (c) => {
   console.log("Calling LLM with content:", content);
 
   console.time("llm_completion");
-  const [_transaction, transactionError] = await trytm(
-    client.chat.completions.create({
+  const [_transaction, transactionError] = await tryAsync(
+    generateObject({
+      model,
       messages: [{
         role: "user",
         content,
       }],
-      model: "gpt-4-turbo",
-      max_tokens: 256,
-      top_p: 0.5,
-      max_retries: 3,
-      response_model: {
-        schema,
-        name: "Transaction",
-      },
+      schema,
+      maxRetries: 3,
     }),
   );
   console.timeEnd("llm_completion");
@@ -216,7 +211,12 @@ app.post("/inbound-email", async (c) => {
     console.error(transactionError);
     return c.text("Error processing email", 500);
   }
-  const transaction = await _transaction;
+  const transaction = (_transaction as any)?.object;
+
+  console.log("🧾 Transaction:", transaction);
+  if ((_transaction as any)?.reasoning) {
+    console.log("🧠 Reasoning:", (_transaction as any).reasoning);
+  }
 
   // const airtable_res = await fetch(
   //   `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}`,
