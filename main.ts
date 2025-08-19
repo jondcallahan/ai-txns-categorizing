@@ -1,8 +1,7 @@
 import { Hono } from "hono";
-import { z } from "npm:zod";
-import "https://deno.land/std@0.180.0/dotenv/load.ts";
-import { openai } from "npm:@ai-sdk/openai";
-import { generateObject } from "npm:ai";
+import { z } from "zod";
+import { openai } from "@ai-sdk/openai";
+import { generateObject } from "ai";
 import { nanoid } from "nanoid";
 // Simple try-catch wrapper
 async function tryAsync<T>(fn: Promise<T>): Promise<[T | null, Error | null]> {
@@ -26,7 +25,7 @@ export const AIRTABLE_TABLE_NAME = z.string().parse(
   Deno.env.get("AIRTABLE_TABLE_NAME"),
 );
 
-const model = openai("gpt-5");
+const model = openai.responses("gpt-5");
 
 const app = new Hono();
 
@@ -253,11 +252,13 @@ app.post("/inbound-email", async (c) => {
   //   console.log("Saved to Airtable");
   // }
 
-  await sendNotification(
-    transaction.merchant,
-    transaction.category,
-    transaction.amount,
-  );
+  if (Deno.env.get("ENV_NAME") !== "dev") {
+    await sendNotification(
+      transaction.merchant,
+      transaction.category,
+      transaction.amount,
+    );
+  }
 
   return c.text("OK", 200);
   // return c.json(transaction);

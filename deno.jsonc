@@ -5,10 +5,10 @@
     "deploy": "deployctl deploy --project=large-crow-51 main.ts --exclude .env"
   },
   "imports": {
-    "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.5",
-    "ai": "npm:ai@^5.0.8",
-    "hono": "https://deno.land/x/hono@v3.9.2/mod.ts",
-    "zod": "https://deno.land/x/zod@v3.22.4/mod.ts",
-    "nanoid": "https://deno.land/x/nanoid@v3.0.0/mod.ts"
+    "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.16",
+    "ai": "npm:ai@^5.0.17",
+    "hono": "npm:hono@^4.9.2",
+    "zod": "npm:zod@^4.0.17",
+    "nanoid": "npm:nanoid@^5.1.5"
   }
 }
