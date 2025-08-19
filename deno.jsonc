@@ -1,6 +1,6 @@
 {
   "tasks": {
-    "dev": "deno run --allow-read --allow-net --allow-env --watch main.ts",
+    "dev": "deno run --allow-read --allow-net --allow-env --env-file --watch main.ts",
     "start": "deno run --allow-read --allow-net --allow-env main.ts",
     "deploy": "deployctl deploy --project=large-crow-51 main.ts --exclude .env"
   },
@@ -8,7 +8,7 @@
     "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.16",
     "ai": "npm:ai@^5.0.17",
     "hono": "npm:hono@^4.9.2",
-    "zod": "npm:zod@^4.0.17",
-    "nanoid": "npm:nanoid@^5.1.5"
+    "nanoid": "npm:nanoid@^5.1.5",
+    "zod": "npm:zod@^4.0.17"
   }
 }
